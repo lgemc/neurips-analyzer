@@ -8,15 +8,22 @@ import umap
 from db import get_connection, deserialize_embedding
 
 
-def load_embeddings(db_path: str = "neurips.db") -> tuple[np.ndarray, list[int]]:
+def load_embeddings(db_path: str = "neurips.db", year: int = None) -> tuple[np.ndarray, list[int]]:
     """
-    Load all embeddings from database.
+    Load embeddings from database, optionally filtered by year.
+
+    Args:
+        db_path: Database path
+        year: Optional year to filter by
 
     Returns:
         Tuple of (embeddings array, paper IDs list)
     """
     conn = get_connection(db_path)
-    cursor = conn.execute("SELECT id, embedding FROM papers WHERE embedding IS NOT NULL ORDER BY id")
+    if year is not None:
+        cursor = conn.execute("SELECT id, embedding FROM papers WHERE embedding IS NOT NULL AND year = ? ORDER BY id", (year,))
+    else:
+        cursor = conn.execute("SELECT id, embedding FROM papers WHERE embedding IS NOT NULL ORDER BY id")
 
     embeddings = []
     paper_ids = []
@@ -132,7 +139,8 @@ def generate_umap(
     n_neighbors: int = 15,
     min_dist: float = 0.1,
     metric: str = 'cosine',
-    random_state: int = 42
+    random_state: int = 42,
+    year: int = None
 ) -> None:
     """
     Main UMAP generation function.
@@ -143,13 +151,19 @@ def generate_umap(
         min_dist: Minimum distance for UMAP
         metric: Distance metric
         random_state: Random seed
+        year: Optional year to compute UMAP for (default: all years)
     """
     # Add columns if needed
     add_umap_columns(db_path)
 
+    if year is not None:
+        print(f"Computing UMAP for year {year}...")
+    else:
+        print("Computing UMAP for all years...")
+
     # Load embeddings
     print("Loading embeddings from database...")
-    embeddings, paper_ids = load_embeddings(db_path)
+    embeddings, paper_ids = load_embeddings(db_path, year=year)
     print(f"Loaded {len(embeddings)} papers with embeddings")
 
     # Compute UMAP
@@ -194,6 +208,12 @@ def main() -> int:
         default=42,
         help="Random seed (default: 42)"
     )
+    parser.add_argument(
+        "-y", "--year",
+        type=int,
+        default=None,
+        help="Compute UMAP only for a specific year (default: all years)"
+    )
 
     args = parser.parse_args()
 
@@ -203,7 +223,8 @@ def main() -> int:
             n_neighbors=args.n_neighbors,
             min_dist=args.min_dist,
             metric=args.metric,
-            random_state=args.seed
+            random_state=args.seed,
+            year=args.year
         )
         return 0
     except Exception as e:

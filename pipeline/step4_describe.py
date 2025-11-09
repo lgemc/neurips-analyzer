@@ -43,7 +43,8 @@ def get_top_papers(db_path: str, cluster_id: int, n: int = 20) -> list[dict]:
 def generate_cluster_description(
     client: Anthropic,
     cluster_id: int,
-    papers: list[dict]
+    papers: list[dict],
+    year: int = None
 ) -> tuple[str, str]:
     """
     Generate cluster name and description using Anthropic API.
@@ -52,6 +53,7 @@ def generate_cluster_description(
         client: Anthropic client
         cluster_id: Cluster ID
         papers: List of top papers
+        year: Year of the cluster (optional)
 
     Returns:
         Tuple of (name, description)
@@ -62,7 +64,8 @@ def generate_cluster_description(
         for i, paper in enumerate(papers)
     ])
 
-    prompt = f"""You are analyzing a cluster of NeurIPS conference papers. Below are the 20 most representative papers from cluster {cluster_id}:
+    year_context = f" from NeurIPS {year}" if year else ""
+    prompt = f"""You are analyzing a cluster of NeurIPS conference papers{year_context}. Below are the 20 most representative papers from cluster {cluster_id}:
 
 {papers_text}
 
@@ -146,9 +149,16 @@ def update_cluster_descriptions(
             print(f"  Warning: No papers found for cluster {cluster_id}")
             continue
 
+        # Get cluster year
+        conn = get_connection(db_path)
+        cursor = conn.execute("SELECT year FROM clusters WHERE id = ?", (cluster_id,))
+        row = cursor.fetchone()
+        year = row['year'] if row else None
+        conn.close()
+
         # Generate description
         try:
-            name, description = generate_cluster_description(client, cluster_id, papers)
+            name, description = generate_cluster_description(client, cluster_id, papers, year)
 
             # Update database
             conn = get_connection(db_path)
@@ -159,7 +169,8 @@ def update_cluster_descriptions(
             conn.commit()
             conn.close()
 
-            print(f"    ✓ Cluster {cluster_id}: {name}")
+            year_label = f" ({year})" if year else ""
+            print(f"    ✓ Cluster {cluster_id}{year_label}: {name}")
             updated += 1
 
         except Exception as e:

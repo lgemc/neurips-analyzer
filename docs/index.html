@@ -29,7 +29,7 @@
     <div x-data="neuripsApp()" x-init="init()" class="container mx-auto px-4 py-8">
         <!-- Header -->
         <header class="mb-8">
-            <h1 class="text-4xl font-bold text-gray-900 mb-2">NeurIPS 2025 Papers</h1>
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">NeurIPS Papers Explorer</h1>
             <p class="text-gray-600" x-text="`${papers.length} papers across ${clusters.length} clusters`"></p>
         </header>
 
@@ -41,16 +41,30 @@
 
         <!-- Main Content -->
         <div x-show="!loading" class="space-y-6">
-            <!-- Search Bar -->
+            <!-- Search and Filters -->
             <div class="bg-white rounded-lg shadow p-4">
-                <input
-                    type="text"
-                    x-model="searchQuery"
-                    @input.debounce.300ms="search()"
-                    placeholder="Search papers by keyword..."
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                <p class="text-sm text-gray-500 mt-2" x-show="searchQuery" x-text="`Found ${filteredPapers.length} papers`"></p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Search Bar -->
+                    <input
+                        type="text"
+                        x-model="searchQuery"
+                        @input.debounce.300ms="search()"
+                        placeholder="Search papers by keyword..."
+                        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                    <!-- Year Filter -->
+                    <select
+                        x-model="selectedYear"
+                        @change="filterPapers()"
+                        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                        <option value="">All Years</option>
+                        <template x-for="year in availableYears" :key="year">
+                            <option :value="year" x-text="year"></option>
+                        </template>
+                    </select>
+                </div>
+                <p class="text-sm text-gray-500 mt-2" x-show="searchQuery || selectedYear" x-text="`Found ${filteredPapers.length} papers`"></p>
             </div>
 
             <!-- Two Column Layout -->
@@ -75,7 +89,10 @@
                                     class="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-500 hover:text-white transition"
                                 >
                                     <div class="font-medium" x-html="processText(cluster.name)"></div>
-                                    <div class="text-xs opacity-75" x-text="`${cluster.count} papers`"></div>
+                                    <div class="text-xs opacity-75">
+                                        <span x-text="`${cluster.count} papers`"></span>
+                                        <span x-show="cluster.year && !selectedYear" x-text="` • ${cluster.year}`"></span>
+                                    </div>
                                 </button>
                             </template>
                         </div>
@@ -140,8 +157,9 @@
                     <div x-show="selectedPaper" class="bg-white rounded-lg shadow p-6">
                         <h2 class="text-2xl font-bold text-gray-900 mb-2" x-html="processText(selectedPaper?.name)"></h2>
 
-                        <div class="mb-4">
+                        <div class="mb-4 flex gap-2">
                             <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded" x-text="selectedPaper?.type"></span>
+                            <span x-show="selectedPaper?.year" class="inline-block bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded" x-text="selectedPaper?.year"></span>
                         </div>
 
                         <div class="mb-4" x-show="selectedPaper?.speakers_authors">
@@ -192,6 +210,8 @@
                 selectedCluster: null,
                 selectedPaper: null,
                 searchQuery: '',
+                selectedYear: '',
+                availableYears: [],
                 currentPage: 1,
                 itemsPerPage: 50,
 
@@ -244,6 +264,7 @@
 
                 async init() {
                     await this.loadDatabase();
+                    this.loadYears();
                     this.loadClusters();
                     this.loadPapers();
                     this.filterPapers();
@@ -263,18 +284,33 @@
                     this.db = new SQL.Database(new Uint8Array(buffer));
                 },
 
+                loadYears() {
+                    const result = this.db.exec(`
+                        SELECT DISTINCT year
+                        FROM papers
+                        WHERE year IS NOT NULL
+                        ORDER BY year DESC
+                    `);
+
+                    if (result[0]) {
+                        this.availableYears = result[0].values.map(row => row[0]);
+                    }
+                },
+
                 loadClusters() {
+                    const yearFilter = this.selectedYear ? `AND c.year = ${this.selectedYear}` : '';
                     const result = this.db.exec(`
                         SELECT
                             c.id,
                             c.name,
                             c.description,
+                            c.year,
                             COUNT(ca.paper_id) as count
                         FROM clusters c
                         LEFT JOIN cluster_associations ca ON c.id = ca.cluster_id
-                        WHERE ca.score > 0.1
+                        WHERE ca.score > 0.1 ${yearFilter}
                         GROUP BY c.id
-                        ORDER BY c.id
+                        ORDER BY c.year DESC, c.id
                     `);
 
                     if (result[0]) {
@@ -282,7 +318,8 @@
                             id: row[0],
                             name: row[1],
                             description: row[2],
-                            count: row[3]
+                            year: row[3],
+                            count: row[4]
                         }));
                     }
                 },
@@ -296,6 +333,7 @@
                             p.virtualsite_url,
                             p.speakers_authors,
                             p.abstract,
+                            p.year,
                             p.umap_x,
                             p.umap_y
                         FROM papers p
@@ -311,8 +349,9 @@
                             virtualsite_url: row[3],
                             speakers_authors: row[4],
                             abstract: row[5],
-                            umap_x: row[6],
-                            umap_y: row[7],
+                            year: row[6],
+                            umap_x: row[7],
+                            umap_y: row[8],
                             clusters: this.getPaperClusters(row[0])
                         }));
                     }
@@ -368,13 +407,21 @@
 
                 filterPapers() {
                     this.currentPage = 1; // Reset to first page when filtering
-                    if (this.selectedCluster === null && !this.searchQuery) {
+
+                    // Reload clusters when year filter changes
+                    this.loadClusters();
+
+                    if (this.selectedCluster === null && !this.searchQuery && !this.selectedYear) {
                         this.filteredPapers = this.papers;
+                        this.renderUMAP();
                         return;
                     }
 
                     if (this.selectedCluster !== null) {
                         // Get papers in selected cluster, sorted by score
+                        const yearFilter = this.selectedYear ? `AND p.year = ${this.selectedYear}` : '';
+                        const searchFilter = this.searchQuery ? `AND (p.name LIKE '%${this.searchQuery}%' OR p.abstract LIKE '%${this.searchQuery}%')` : '';
+
                         const result = this.db.exec(`
                             SELECT
                                 p.id,
@@ -383,13 +430,15 @@
                                 p.virtualsite_url,
                                 p.speakers_authors,
                                 p.abstract,
+                                p.year,
                                 p.umap_x,
                                 p.umap_y,
                                 ca.score
                             FROM papers p
                             JOIN cluster_associations ca ON p.id = ca.paper_id
                             WHERE ca.cluster_id = ${this.selectedCluster}
-                            ${this.searchQuery ? `AND (p.name LIKE '%${this.searchQuery}%' OR p.abstract LIKE '%${this.searchQuery}%')` : ''}
+                            ${yearFilter}
+                            ${searchFilter}
                             ORDER BY ca.score DESC
                         `);
 
@@ -401,11 +450,14 @@
                                 virtualsite_url: row[3],
                                 speakers_authors: row[4],
                                 abstract: row[5],
-                                umap_x: row[6],
-                                umap_y: row[7],
-                                score: row[8],
+                                year: row[6],
+                                umap_x: row[7],
+                                umap_y: row[8],
+                                score: row[9],
                                 clusters: this.getPaperClusters(row[0])
                             }));
+                        } else {
+                            this.filteredPapers = [];
                         }
                     } else {
                         this.search();
@@ -415,17 +467,20 @@
                 },
 
                 search() {
-                    if (!this.searchQuery) {
+                    if (!this.searchQuery && !this.selectedYear) {
                         this.filterPapers();
                         return;
                     }
 
                     this.currentPage = 1; // Reset to first page when searching
                     const query = this.searchQuery.toLowerCase();
-                    this.filteredPapers = this.papers.filter(paper =>
-                        paper.name.toLowerCase().includes(query) ||
-                        (paper.abstract && paper.abstract.toLowerCase().includes(query))
-                    );
+                    this.filteredPapers = this.papers.filter(paper => {
+                        const matchesSearch = !this.searchQuery ||
+                            paper.name.toLowerCase().includes(query) ||
+                            (paper.abstract && paper.abstract.toLowerCase().includes(query));
+                        const matchesYear = !this.selectedYear || paper.year == this.selectedYear;
+                        return matchesSearch && matchesYear;
+                    });
 
                     this.renderUMAP();
                 },

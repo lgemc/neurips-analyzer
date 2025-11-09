@@ -27,6 +27,7 @@ def init_schema(db_path: str = "neurips.db") -> None:
             virtualsite_url TEXT,
             speakers_authors TEXT,
             abstract TEXT,
+            year INTEGER,
             embedding BLOB
         )
     """)
@@ -36,7 +37,9 @@ def init_schema(db_path: str = "neurips.db") -> None:
         CREATE TABLE IF NOT EXISTS clusters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
-            description TEXT
+            description TEXT,
+            year INTEGER,
+            embedding BLOB
         )
     """)
 
@@ -55,6 +58,7 @@ def init_schema(db_path: str = "neurips.db") -> None:
     # Create indices for faster queries
     conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_id ON cluster_associations(paper_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cluster_id ON cluster_associations(cluster_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cluster_year ON clusters(year)")
 
     conn.commit()
     conn.close()

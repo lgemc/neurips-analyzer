@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 
 # Import step functions
-from step1_load import load_csv
+from step1_load import load_csv, load_folder
 from step2_embed import compute_embeddings
 from step3_cluster import cluster_papers
 from step4_describe import update_cluster_descriptions
@@ -20,7 +20,7 @@ def run_pipeline(
     steps: list[int] = None,
     replace: bool = False,
     model: str = "all-MiniLM-L6-v2",
-    n_clusters: int = None,
+    n_clusters: int = 7,
     min_k: int = 3,
     max_k: int = 15,
     top_n: int = 20,
@@ -33,12 +33,12 @@ def run_pipeline(
     Run the complete pipeline or specific steps.
 
     Args:
-        csv_path: Path to input CSV file
+        csv_path: Path to input CSV file or folder
         db_path: Database path
         steps: List of steps to run (1-5). If None, run all
         replace: Replace existing papers in step 1
         model: Sentence-transformer model name
-        n_clusters: Number of clusters (None = auto-determine)
+        n_clusters: Number of clusters (default: 7)
         min_k: Minimum k for auto-determination
         max_k: Maximum k for auto-determination
         top_n: Number of top papers for cluster descriptions
@@ -61,14 +61,21 @@ def run_pipeline(
     print("="*80)
 
     try:
-        # Step 1: Load CSV
+        # Step 1: Load CSV(s)
         if 1 in steps:
-            print("\n[Step 1/5] Loading CSV into database...")
-            if not Path(csv_path).exists():
-                print(f"Error: CSV file not found: {csv_path}")
+            print("\n[Step 1/5] Loading data into database...")
+            path = Path(csv_path)
+
+            if not path.exists():
+                print(f"Error: Path not found: {csv_path}")
                 return False
 
-            count = load_csv(csv_path, db_path, replace=replace)
+            # Check if folder or file
+            if path.is_dir():
+                count = load_folder(csv_path, db_path, replace=replace)
+            else:
+                count = load_csv(csv_path, db_path, replace=replace)
+
             print(f"✓ Loaded {count} papers")
 
         # Step 2: Compute embeddings
@@ -136,20 +143,23 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run full pipeline
+  # Run full pipeline on folder
+  python run.py paper_list/
+
+  # Run full pipeline on single file
   python run.py "NeurIPS 2025 Events.csv"
 
   # Run only steps 3, 4, and 5 (clustering + descriptions + UMAP)
-  python run.py "NeurIPS 2025 Events.csv" --steps 3 4 5
+  python run.py paper_list/ --steps 3 4 5
 
   # Run with custom parameters
-  python run.py "NeurIPS 2025 Events.csv" --n-clusters 10 --model all-mpnet-base-v2 --n-neighbors 30
+  python run.py paper_list/ --n-clusters 10 --model all-mpnet-base-v2 --n-neighbors 30
         """
     )
 
     parser.add_argument(
         "csv",
-        help="Path to input CSV file"
+        help="Path to input CSV file or folder containing CSV files"
     )
     parser.add_argument(
         "-d", "--db",
@@ -176,7 +186,8 @@ Examples:
     parser.add_argument(
         "-k", "--n-clusters",
         type=int,
-        help="Number of clusters (default: auto-determine)"
+        default=7,
+        help="Number of clusters (default: 7)"
     )
     parser.add_argument(
         "--min-k",
