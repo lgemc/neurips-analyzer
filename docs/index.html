@@ -74,10 +74,10 @@
                     </div>
 
                     <!-- Papers List -->
-                    <div class="bg-white rounded-lg shadow p-4 max-h-96 overflow-y-auto">
+                    <div class="bg-white rounded-lg shadow p-4">
                         <h2 class="text-xl font-semibold mb-4">Papers</h2>
-                        <div class="space-y-2">
-                            <template x-for="paper in filteredPapers.slice(0, 50)" :key="paper.id">
+                        <div class="space-y-2 max-h-96 overflow-y-auto mb-4">
+                            <template x-for="paper in paginatedPapers" :key="paper.id">
                                 <button
                                     @click="selectedPaper = paper"
                                     :class="selectedPaper?.id === paper.id ? 'bg-blue-50 border-blue-500' : 'border-gray-200'"
@@ -89,9 +89,36 @@
                                     </div>
                                 </button>
                             </template>
-                            <p class="text-sm text-gray-500 text-center py-2" x-show="filteredPapers.length > 50">
-                                Showing 50 of <span x-text="filteredPapers.length"></span> papers
+                        </div>
+
+                        <!-- Pagination Controls -->
+                        <div x-show="totalPages > 1" class="flex items-center justify-between border-t pt-4">
+                            <p class="text-sm text-gray-500">
+                                Showing <span x-text="(currentPage - 1) * itemsPerPage + 1"></span> to
+                                <span x-text="Math.min(currentPage * itemsPerPage, filteredPapers.length)"></span> of
+                                <span x-text="filteredPapers.length"></span> papers
                             </p>
+                            <div class="flex gap-2">
+                                <button
+                                    @click="prevPage()"
+                                    :disabled="currentPage === 1"
+                                    :class="currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                                    class="px-3 py-1 border rounded text-sm"
+                                >
+                                    Previous
+                                </button>
+                                <span class="px-3 py-1 text-sm">
+                                    Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span>
+                                </span>
+                                <button
+                                    @click="nextPage()"
+                                    :disabled="currentPage === totalPages"
+                                    :class="currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                                    class="px-3 py-1 border rounded text-sm"
+                                >
+                                    Next
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -161,6 +188,8 @@
                 selectedCluster: null,
                 selectedPaper: null,
                 searchQuery: '',
+                currentPage: 1,
+                itemsPerPage: 50,
 
                 async init() {
                     await this.loadDatabase();
@@ -260,7 +289,34 @@
                     return [];
                 },
 
+                get paginatedPapers() {
+                    const start = (this.currentPage - 1) * this.itemsPerPage;
+                    const end = start + this.itemsPerPage;
+                    return this.filteredPapers.slice(start, end);
+                },
+
+                get totalPages() {
+                    return Math.ceil(this.filteredPapers.length / this.itemsPerPage);
+                },
+
+                nextPage() {
+                    if (this.currentPage < this.totalPages) {
+                        this.currentPage++;
+                    }
+                },
+
+                prevPage() {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                    }
+                },
+
+                goToPage(page) {
+                    this.currentPage = Math.max(1, Math.min(page, this.totalPages));
+                },
+
                 filterPapers() {
+                    this.currentPage = 1; // Reset to first page when filtering
                     if (this.selectedCluster === null && !this.searchQuery) {
                         this.filteredPapers = this.papers;
                         return;
@@ -313,6 +369,7 @@
                         return;
                     }
 
+                    this.currentPage = 1; // Reset to first page when searching
                     const query = this.searchQuery.toLowerCase();
                     this.filteredPapers = this.papers.filter(paper =>
                         paper.name.toLowerCase().includes(query) ||
