@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeurIPS 2025 Papers - Cluster Visualization</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <!-- sql.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+</head>
+<body class="bg-gray-50">
+    <div x-data="neuripsApp()" x-init="init()" class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">NeurIPS 2025 Papers</h1>
+            <p class="text-gray-600" x-text="`${papers.length} papers across ${clusters.length} clusters`"></p>
+        </header>
+
+        <!-- Loading State -->
+        <div x-show="loading" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p class="mt-4 text-gray-600">Loading database...</p>
+        </div>
+
+        <!-- Main Content -->
+        <div x-show="!loading" class="space-y-6">
+            <!-- Search Bar -->
+            <div class="bg-white rounded-lg shadow p-4">
+                <input
+                    type="text"
+                    x-model="searchQuery"
+                    @input.debounce.300ms="search()"
+                    placeholder="Search papers by keyword..."
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                <p class="text-sm text-gray-500 mt-2" x-show="searchQuery" x-text="`Found ${filteredPapers.length} papers`"></p>
+            </div>
+
+            <!-- Two Column Layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left Column: Clusters & Papers List -->
+                <div class="lg:col-span-1 space-y-4">
+                    <!-- Cluster Selector -->
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h2 class="text-xl font-semibold mb-4">Clusters</h2>
+                        <div class="space-y-2">
+                            <button
+                                @click="selectedCluster = null; filterPapers()"
+                                :class="selectedCluster === null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'"
+                                class="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-500 hover:text-white transition"
+                            >
+                                All Papers
+                            </button>
+                            <template x-for="cluster in clusters" :key="cluster.id">
+                                <button
+                                    @click="selectedCluster = cluster.id; filterPapers()"
+                                    :class="selectedCluster === cluster.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'"
+                                    class="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-500 hover:text-white transition"
+                                >
+                                    <div class="font-medium" x-text="cluster.name"></div>
+                                    <div class="text-xs opacity-75" x-text="`${cluster.count} papers`"></div>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Papers List -->
+                    <div class="bg-white rounded-lg shadow p-4 max-h-96 overflow-y-auto">
+                        <h2 class="text-xl font-semibold mb-4">Papers</h2>
+                        <div class="space-y-2">
+                            <template x-for="paper in filteredPapers.slice(0, 50)" :key="paper.id">
+                                <button
+                                    @click="selectedPaper = paper"
+                                    :class="selectedPaper?.id === paper.id ? 'bg-blue-50 border-blue-500' : 'border-gray-200'"
+                                    class="w-full text-left px-3 py-2 border rounded-lg hover:border-blue-500 transition"
+                                >
+                                    <div class="text-sm font-medium text-gray-900 line-clamp-2" x-text="paper.name"></div>
+                                    <div class="text-xs text-gray-500 mt-1" x-show="paper.score">
+                                        <span x-text="`Score: ${(paper.score * 100).toFixed(1)}%`"></span>
+                                    </div>
+                                </button>
+                            </template>
+                            <p class="text-sm text-gray-500 text-center py-2" x-show="filteredPapers.length > 50">
+                                Showing 50 of <span x-text="filteredPapers.length"></span> papers
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Visualization & Details -->
+                <div class="lg:col-span-2 space-y-4">
+                    <!-- UMAP Visualization -->
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h2 class="text-xl font-semibold mb-4">UMAP Visualization</h2>
+                        <div id="umap-plot" style="width: 100%; height: 600px;"></div>
+                    </div>
+
+                    <!-- Paper Details -->
+                    <div x-show="selectedPaper" class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2" x-text="selectedPaper?.name"></h2>
+
+                        <div class="mb-4">
+                            <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded" x-text="selectedPaper?.type"></span>
+                        </div>
+
+                        <div class="mb-4" x-show="selectedPaper?.speakers_authors">
+                            <h3 class="font-semibold text-gray-700 mb-1">Authors</h3>
+                            <p class="text-gray-600" x-text="selectedPaper?.speakers_authors"></p>
+                        </div>
+
+                        <div class="mb-4" x-show="selectedPaper?.abstract">
+                            <h3 class="font-semibold text-gray-700 mb-1">Abstract</h3>
+                            <p class="text-gray-600 text-sm" x-text="selectedPaper?.abstract"></p>
+                        </div>
+
+                        <div x-show="selectedPaper?.virtualsite_url">
+                            <a :href="selectedPaper?.virtualsite_url"
+                               target="_blank"
+                               class="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                                View on NeurIPS →
+                            </a>
+                        </div>
+
+                        <div class="mt-4" x-show="selectedPaper?.clusters">
+                            <h3 class="font-semibold text-gray-700 mb-2">Clusters</h3>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="c in selectedPaper?.clusters" :key="c.cluster_id">
+                                    <button
+                                        @click="selectedCluster = c.cluster_id; filterPapers()"
+                                        class="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded hover:bg-gray-200"
+                                    >
+                                        <span x-text="c.cluster_name"></span>
+                                        <span class="text-xs opacity-75" x-text="`(${(c.score * 100).toFixed(1)}%)`"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function neuripsApp() {
+            return {
+                db: null,
+                loading: true,
+                papers: [],
+                clusters: [],
+                filteredPapers: [],
+                selectedCluster: null,
+                selectedPaper: null,
+                searchQuery: '',
+
+                async init() {
+                    await this.loadDatabase();
+                    this.loadClusters();
+                    this.loadPapers();
+                    this.filterPapers();
+                    this.renderUMAP();
+                    this.loading = false;
+                },
+
+                async loadDatabase() {
+                    // Initialize sql.js
+                    const SQL = await initSqlJs({
+                        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                    });
+
+                    // Load the database file
+                    const response = await fetch('./neurips.db');
+                    const buffer = await response.arrayBuffer();
+                    this.db = new SQL.Database(new Uint8Array(buffer));
+                },
+
+                loadClusters() {
+                    const result = this.db.exec(`
+                        SELECT
+                            c.id,
+                            c.name,
+                            c.description,
+                            COUNT(ca.paper_id) as count
+                        FROM clusters c
+                        LEFT JOIN cluster_associations ca ON c.id = ca.cluster_id
+                        WHERE ca.score > 0.1
+                        GROUP BY c.id
+                        ORDER BY c.id
+                    `);
+
+                    if (result[0]) {
+                        this.clusters = result[0].values.map(row => ({
+                            id: row[0],
+                            name: row[1],
+                            description: row[2],
+                            count: row[3]
+                        }));
+                    }
+                },
+
+                loadPapers() {
+                    const result = this.db.exec(`
+                        SELECT
+                            p.id,
+                            p.type,
+                            p.name,
+                            p.virtualsite_url,
+                            p.speakers_authors,
+                            p.abstract,
+                            p.umap_x,
+                            p.umap_y
+                        FROM papers p
+                        WHERE p.umap_x IS NOT NULL
+                        ORDER BY p.id
+                    `);
+
+                    if (result[0]) {
+                        this.papers = result[0].values.map(row => ({
+                            id: row[0],
+                            type: row[1],
+                            name: row[2],
+                            virtualsite_url: row[3],
+                            speakers_authors: row[4],
+                            abstract: row[5],
+                            umap_x: row[6],
+                            umap_y: row[7],
+                            clusters: this.getPaperClusters(row[0])
+                        }));
+                    }
+                },
+
+                getPaperClusters(paperId) {
+                    const result = this.db.exec(`
+                        SELECT
+                            ca.cluster_id,
+                            c.name,
+                            ca.score
+                        FROM cluster_associations ca
+                        JOIN clusters c ON ca.cluster_id = c.id
+                        WHERE ca.paper_id = ${paperId}
+                        ORDER BY ca.score DESC
+                    `);
+
+                    if (result[0]) {
+                        return result[0].values.map(row => ({
+                            cluster_id: row[0],
+                            cluster_name: row[1],
+                            score: row[2]
+                        }));
+                    }
+                    return [];
+                },
+
+                filterPapers() {
+                    if (this.selectedCluster === null && !this.searchQuery) {
+                        this.filteredPapers = this.papers;
+                        return;
+                    }
+
+                    if (this.selectedCluster !== null) {
+                        // Get papers in selected cluster, sorted by score
+                        const result = this.db.exec(`
+                            SELECT
+                                p.id,
+                                p.type,
+                                p.name,
+                                p.virtualsite_url,
+                                p.speakers_authors,
+                                p.abstract,
+                                p.umap_x,
+                                p.umap_y,
+                                ca.score
+                            FROM papers p
+                            JOIN cluster_associations ca ON p.id = ca.paper_id
+                            WHERE ca.cluster_id = ${this.selectedCluster}
+                            ${this.searchQuery ? `AND (p.name LIKE '%${this.searchQuery}%' OR p.abstract LIKE '%${this.searchQuery}%')` : ''}
+                            ORDER BY ca.score DESC
+                        `);
+
+                        if (result[0]) {
+                            this.filteredPapers = result[0].values.map(row => ({
+                                id: row[0],
+                                type: row[1],
+                                name: row[2],
+                                virtualsite_url: row[3],
+                                speakers_authors: row[4],
+                                abstract: row[5],
+                                umap_x: row[6],
+                                umap_y: row[7],
+                                score: row[8],
+                                clusters: this.getPaperClusters(row[0])
+                            }));
+                        }
+                    } else {
+                        this.search();
+                    }
+
+                    this.renderUMAP();
+                },
+
+                search() {
+                    if (!this.searchQuery) {
+                        this.filterPapers();
+                        return;
+                    }
+
+                    const query = this.searchQuery.toLowerCase();
+                    this.filteredPapers = this.papers.filter(paper =>
+                        paper.name.toLowerCase().includes(query) ||
+                        (paper.abstract && paper.abstract.toLowerCase().includes(query))
+                    );
+
+                    this.renderUMAP();
+                },
+
+                renderUMAP() {
+                    const displayPapers = this.filteredPapers.length > 0 ? this.filteredPapers : this.papers;
+
+                    // Group papers by cluster for coloring
+                    const traces = [];
+
+                    if (this.selectedCluster !== null) {
+                        // Single cluster view
+                        const trace = {
+                            x: displayPapers.map(p => p.umap_x),
+                            y: displayPapers.map(p => p.umap_y),
+                            mode: 'markers',
+                            type: 'scatter',
+                            name: this.clusters.find(c => c.id === this.selectedCluster)?.name || 'Cluster',
+                            text: displayPapers.map(p => p.name),
+                            marker: {
+                                size: displayPapers.map(p => p.score ? 5 + (p.score * 10) : 5),
+                                color: this.selectedCluster,
+                                colorscale: 'Viridis',
+                                opacity: 0.7
+                            },
+                            hovertemplate: '<b>%{text}</b><br>Score: %{marker.size:.1f}<extra></extra>'
+                        };
+                        traces.push(trace);
+                    } else {
+                        // All clusters view - color by primary cluster
+                        const clusterGroups = {};
+
+                        displayPapers.forEach(paper => {
+                            const primaryCluster = paper.clusters[0]?.cluster_id || 0;
+                            if (!clusterGroups[primaryCluster]) {
+                                clusterGroups[primaryCluster] = [];
+                            }
+                            clusterGroups[primaryCluster].push(paper);
+                        });
+
+                        Object.entries(clusterGroups).forEach(([clusterId, papers]) => {
+                            const cluster = this.clusters.find(c => c.id === parseInt(clusterId));
+                            const trace = {
+                                x: papers.map(p => p.umap_x),
+                                y: papers.map(p => p.umap_y),
+                                mode: 'markers',
+                                type: 'scatter',
+                                name: cluster?.name || 'Unknown',
+                                text: papers.map(p => p.name),
+                                marker: {
+                                    size: 5,
+                                    opacity: 0.6
+                                },
+                                hovertemplate: '<b>%{text}</b><extra></extra>'
+                            };
+                            traces.push(trace);
+                        });
+                    }
+
+                    const layout = {
+                        title: this.selectedCluster
+                            ? this.clusters.find(c => c.id === this.selectedCluster)?.name
+                            : 'All Papers',
+                        xaxis: { title: 'UMAP 1' },
+                        yaxis: { title: 'UMAP 2' },
+                        hovermode: 'closest',
+                        showlegend: true,
+                        margin: { t: 40, r: 20, b: 40, l: 40 }
+                    };
+
+                    const config = {
+                        responsive: true,
+                        displayModeBar: true,
+                        displaylogo: false
+                    };
+
+                    Plotly.newPlot('umap-plot', traces, layout, config);
+
+                    // Add click handler to select paper
+                    document.getElementById('umap-plot').on('plotly_click', (data) => {
+                        const point = data.points[0];
+                        const paperId = displayPapers[point.pointIndex]?.id;
+                        if (paperId) {
+                            this.selectedPaper = this.papers.find(p => p.id === paperId);
+                        }
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
