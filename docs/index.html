@@ -16,6 +16,14 @@
 
     <!-- sql.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 </head>
 <body class="bg-gray-50">
     <div x-data="neuripsApp()" x-init="init()" class="container mx-auto px-4 py-8">
@@ -66,7 +74,7 @@
                                     :class="selectedCluster === cluster.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'"
                                     class="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-500 hover:text-white transition"
                                 >
-                                    <div class="font-medium" x-text="cluster.name"></div>
+                                    <div class="font-medium" x-html="processText(cluster.name)"></div>
                                     <div class="text-xs opacity-75" x-text="`${cluster.count} papers`"></div>
                                 </button>
                             </template>
@@ -83,7 +91,7 @@
                                     :class="selectedPaper?.id === paper.id ? 'bg-blue-50 border-blue-500' : 'border-gray-200'"
                                     class="w-full text-left px-3 py-2 border rounded-lg hover:border-blue-500 transition"
                                 >
-                                    <div class="text-sm font-medium text-gray-900 line-clamp-2" x-text="paper.name"></div>
+                                    <div class="text-sm font-medium text-gray-900 line-clamp-2" x-html="processText(paper.name)"></div>
                                 </button>
                             </template>
                         </div>
@@ -130,7 +138,7 @@
 
                     <!-- Paper Details -->
                     <div x-show="selectedPaper" class="bg-white rounded-lg shadow p-6">
-                        <h2 class="text-2xl font-bold text-gray-900 mb-2" x-text="selectedPaper?.name"></h2>
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2" x-html="processText(selectedPaper?.name)"></h2>
 
                         <div class="mb-4">
                             <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded" x-text="selectedPaper?.type"></span>
@@ -143,7 +151,7 @@
 
                         <div class="mb-4" x-show="selectedPaper?.abstract">
                             <h3 class="font-semibold text-gray-700 mb-1">Abstract</h3>
-                            <p class="text-gray-600 text-sm" x-text="selectedPaper?.abstract"></p>
+                            <div class="text-gray-600 text-sm" x-html="processText(selectedPaper?.abstract)"></div>
                         </div>
 
                         <div x-show="selectedPaper?.virtualsite_url">
@@ -162,7 +170,7 @@
                                         @click="selectedCluster = c.cluster_id; filterPapers()"
                                         class="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded hover:bg-gray-200"
                                     >
-                                        <span x-text="c.cluster_name"></span>
+                                        <span x-html="processText(c.cluster_name)"></span>
                                     </button>
                                 </template>
                             </div>
@@ -186,6 +194,53 @@
                 searchQuery: '',
                 currentPage: 1,
                 itemsPerPage: 50,
+
+                // Process text with LaTeX and markdown
+                processText(text) {
+                    if (!text) return '';
+
+                    // First, convert markdown to HTML
+                    let processed = marked.parse(text, { breaks: true });
+
+                    // Then render LaTeX formulas
+                    // Handle inline formulas: $...$
+                    processed = processed.replace(/\$([^$]+)\$/g, (match, formula) => {
+                        try {
+                            return katex.renderToString(formula, { throwOnError: false });
+                        } catch (e) {
+                            return match;
+                        }
+                    });
+
+                    // Handle display formulas: $$...$$
+                    processed = processed.replace(/\$\$([^$]+)\$\$/g, (match, formula) => {
+                        try {
+                            return katex.renderToString(formula, { displayMode: true, throwOnError: false });
+                        } catch (e) {
+                            return match;
+                        }
+                    });
+
+                    // Handle \(...\) inline formulas
+                    processed = processed.replace(/\\\((.+?)\\\)/g, (match, formula) => {
+                        try {
+                            return katex.renderToString(formula, { throwOnError: false });
+                        } catch (e) {
+                            return match;
+                        }
+                    });
+
+                    // Handle \[...\] display formulas
+                    processed = processed.replace(/\\\[(.+?)\\\]/g, (match, formula) => {
+                        try {
+                            return katex.renderToString(formula, { displayMode: true, throwOnError: false });
+                        } catch (e) {
+                            return match;
+                        }
+                    });
+
+                    return processed;
+                },
 
                 async init() {
                     await this.loadDatabase();
