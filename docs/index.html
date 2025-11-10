@@ -186,7 +186,7 @@
 
                         <div class="mb-4" x-show="selectedPaper?.abstract">
                             <h3 class="font-semibold text-gray-700 mb-1">Abstract</h3>
-                            <div class="text-gray-600 text-sm" x-html="processText(selectedPaper?.abstract)"></div>
+                            <div class="text-gray-600 text-sm" x-html="processText(selectedPaper?.abstract) + '...'"></div>
                         </div>
 
                         <div x-show="selectedPaper?.virtualsite_url">
