@@ -281,6 +281,10 @@
                 async init() {
                     await this.loadDatabase();
                     this.loadYears();
+                    // Set the most recent year as default
+                    if (this.availableYears.length > 0) {
+                        this.selectedYear = this.availableYears[0];
+                    }
                     this.loadClusters();
                     this.loadPapers();
                     this.filterPapers();
