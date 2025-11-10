@@ -12,6 +12,7 @@ from step2_embed import compute_embeddings
 from step3_cluster import cluster_papers
 from step4_describe import update_cluster_descriptions
 from step5_umap import generate_umap
+from step6_web_db import create_web_database
 
 
 def run_pipeline(
@@ -27,7 +28,8 @@ def run_pipeline(
     n_neighbors: int = 15,
     min_dist: float = 0.1,
     metric: str = 'cosine',
-    random_state: int = 42
+    random_state: int = 42,
+    web_db_path: str = None
 ) -> bool:
     """
     Run the complete pipeline or specific steps.
@@ -35,7 +37,7 @@ def run_pipeline(
     Args:
         csv_path: Path to input CSV file or folder
         db_path: Database path
-        steps: List of steps to run (1-5). If None, run all
+        steps: List of steps to run (1-6). If None, run all
         replace: Replace existing papers in step 1
         model: Sentence-transformer model name
         n_clusters: Number of clusters (default: 7)
@@ -46,12 +48,13 @@ def run_pipeline(
         min_dist: Minimum distance for UMAP
         metric: Distance metric for UMAP
         random_state: Random seed
+        web_db_path: Output path for web-optimized database (step 6)
 
     Returns:
         True if successful
     """
     if steps is None:
-        steps = [1, 2, 3, 4, 5]
+        steps = [1, 2, 3, 4, 5, 6]
 
     print("="*80)
     print("NeurIPS Papers Clustering Pipeline")
@@ -63,7 +66,7 @@ def run_pipeline(
     try:
         # Step 1: Load CSV(s)
         if 1 in steps:
-            print("\n[Step 1/5] Loading data into database...")
+            print("\n[Step 1/6] Loading data into database...")
             path = Path(csv_path)
 
             if not path.exists():
@@ -80,7 +83,7 @@ def run_pipeline(
 
         # Step 2: Compute embeddings
         if 2 in steps:
-            print("\n[Step 2/5] Computing embeddings...")
+            print("\n[Step 2/6] Computing embeddings...")
             count = compute_embeddings(
                 db_path=db_path,
                 model_name=model,
@@ -93,7 +96,7 @@ def run_pipeline(
 
         # Step 3: Cluster papers
         if 3 in steps:
-            print("\n[Step 3/5] Clustering papers...")
+            print("\n[Step 3/6] Clustering papers...")
             n_created = cluster_papers(
                 db_path=db_path,
                 n_clusters=n_clusters,
@@ -105,7 +108,7 @@ def run_pipeline(
 
         # Step 4: Generate cluster descriptions
         if 4 in steps:
-            print("\n[Step 4/5] Generating cluster descriptions...")
+            print("\n[Step 4/6] Generating cluster descriptions...")
             count = update_cluster_descriptions(
                 db_path=db_path,
                 top_n=top_n
@@ -114,7 +117,7 @@ def run_pipeline(
 
         # Step 5: Generate UMAP coordinates
         if 5 in steps:
-            print("\n[Step 5/5] Generating UMAP coordinates...")
+            print("\n[Step 5/6] Generating UMAP coordinates...")
             generate_umap(
                 db_path=db_path,
                 n_neighbors=n_neighbors,
@@ -123,6 +126,19 @@ def run_pipeline(
                 random_state=random_state
             )
             print("✓ UMAP coordinates generated")
+
+        # Step 6: Create web-optimized database
+        if 6 in steps:
+            print("\n[Step 6/6] Creating web-optimized database...")
+            if web_db_path is None:
+                # Default: same directory as db_path, but with _web suffix
+                db_dir = Path(db_path).parent
+                db_name = Path(db_path).stem
+                web_db_path = str(db_dir / f"{db_name}_web.db")
+
+            input_size, output_size, savings = create_web_database(db_path, web_db_path)
+            print(f"✓ Created web database: {web_db_path}")
+            print(f"  Size reduced: {input_size:.2f} MB → {output_size:.2f} MB ({savings:.1f}% saved)")
 
         print("\n" + "="*80)
         print("Pipeline completed successfully!")
@@ -149,8 +165,11 @@ Examples:
   # Run full pipeline on single file
   python run.py "NeurIPS 2025 Events.csv"
 
-  # Run only steps 3, 4, and 5 (clustering + descriptions + UMAP)
-  python run.py paper_list/ --steps 3 4 5
+  # Run only steps 3, 4, 5, and 6 (clustering + descriptions + UMAP + web DB)
+  python run.py paper_list/ --steps 3 4 5 6
+
+  # Run only step 6 to create web-optimized database
+  python run.py paper_list/ --steps 6 --web-db docs/neurips_web.db
 
   # Run with custom parameters
   python run.py paper_list/ --n-clusters 10 --model all-mpnet-base-v2 --n-neighbors 30
@@ -170,8 +189,8 @@ Examples:
         "--steps",
         type=int,
         nargs="+",
-        choices=[1, 2, 3, 4, 5],
-        help="Steps to run (1=load, 2=embed, 3=cluster, 4=describe, 5=umap). Default: all steps"
+        choices=[1, 2, 3, 4, 5, 6],
+        help="Steps to run (1=load, 2=embed, 3=cluster, 4=describe, 5=umap, 6=web-db). Default: all steps"
     )
     parser.add_argument(
         "--replace",
@@ -230,6 +249,10 @@ Examples:
         default=42,
         help="Random seed (default: 42)"
     )
+    parser.add_argument(
+        "--web-db",
+        help="Output path for web-optimized database (step 6). Default: {db}_web.db"
+    )
 
     args = parser.parse_args()
 
@@ -246,7 +269,8 @@ Examples:
         n_neighbors=args.n_neighbors,
         min_dist=args.min_dist,
         metric=args.metric,
-        random_state=args.seed
+        random_state=args.seed,
+        web_db_path=args.web_db
     )
 
     return 0 if success else 1

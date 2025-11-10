@@ -24,6 +24,16 @@
 
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5FWXEWH5JE"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-5FWXEWH5JE');
+    </script>
 </head>
 <body class="bg-gray-50">
     <div x-data="neuripsApp()" x-init="init()" class="container mx-auto px-4 py-8">
@@ -304,17 +314,17 @@
                 },
 
                 loadClusters() {
-                    const yearFilter = this.selectedYear ? `AND c.year = ${this.selectedYear}` : '';
+                    const yearFilter = this.selectedYear ? `WHERE c.year = ${this.selectedYear}` : '';
                     const result = this.db.exec(`
                         SELECT
                             c.id,
                             c.name,
                             c.description,
                             c.year,
-                            COUNT(ca.paper_id) as count
+                            COUNT(CASE WHEN ca.score > 0.1 THEN ca.paper_id END) as count
                         FROM clusters c
                         LEFT JOIN cluster_associations ca ON c.id = ca.cluster_id
-                        WHERE ca.score > 0.1 ${yearFilter}
+                        ${yearFilter}
                         GROUP BY c.id
                         ORDER BY c.year DESC, c.id
                     `);

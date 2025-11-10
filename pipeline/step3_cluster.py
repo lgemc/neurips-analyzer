@@ -142,6 +142,7 @@ def compute_cluster_vectors(
     embeddings: np.ndarray,
     paper_ids: list[int],
     probabilities: np.ndarray,
+    cluster_db_ids: list[int],
     top_n: int = 100
 ) -> None:
     """
@@ -152,6 +153,7 @@ def compute_cluster_vectors(
         embeddings: Paper embeddings array
         paper_ids: List of paper IDs
         probabilities: Soft cluster probabilities (n_papers x n_clusters)
+        cluster_db_ids: Actual database IDs for clusters
         top_n: Number of top papers to use for cluster vector (default: 100)
     """
     from db import serialize_embedding
@@ -177,11 +179,10 @@ def compute_cluster_vectors(
         weights = top_scores / top_scores.sum()
         cluster_vector = np.average(top_embeddings, weights=weights, axis=0)
 
-        # Store cluster vector (cluster_id is 1-indexed in DB)
-        cluster_id = cluster_idx + 1
+        # Store cluster vector using actual database ID
         conn.execute(
             "UPDATE clusters SET embedding = ? WHERE id = ?",
-            (serialize_embedding(cluster_vector), cluster_id)
+            (serialize_embedding(cluster_vector), cluster_db_ids[cluster_idx])
         )
 
         if (cluster_idx + 1) % 5 == 0:
@@ -199,7 +200,7 @@ def store_clusters(
     probabilities: np.ndarray,
     year: int,
     min_score: float = 0.01
-) -> int:
+) -> tuple[int, list[int]]:
     """
     Store clusters and associations in database.
 
@@ -211,20 +212,24 @@ def store_clusters(
         min_score: Minimum probability to store association
 
     Returns:
-        Number of clusters created
+        Tuple of (number of clusters created, list of cluster database IDs)
     """
     n_clusters = probabilities.shape[1]
 
     conn = get_connection(db_path)
 
-    # Create cluster entries
+    # Create cluster entries and track their actual IDs
     print(f"Creating {n_clusters} cluster entries for year {year}...")
+    cluster_db_ids = []
     for cluster_id in range(n_clusters):
-        conn.execute(
+        cursor = conn.execute(
             "INSERT INTO clusters (name, description, year) VALUES (?, ?, ?)",
             (f"Cluster {cluster_id} ({year})", "", year)
         )
+        cluster_db_ids.append(cursor.lastrowid)
     conn.commit()
+
+    print(f"Created clusters with IDs: {cluster_db_ids[0]}-{cluster_db_ids[-1]}")
 
     # Store associations
     print("Storing cluster associations...")
@@ -237,10 +242,10 @@ def store_clusters(
         # Store associations for clusters above threshold
         for cluster_idx, score in enumerate(probs):
             if score >= min_score:
-                # cluster_id in DB is 1-indexed (AUTOINCREMENT starts at 1)
+                # Use the actual database cluster ID
                 conn.execute(
                     "INSERT INTO cluster_associations (cluster_id, paper_id, score) VALUES (?, ?, ?)",
-                    (cluster_idx + 1, paper_id, float(score))
+                    (cluster_db_ids[cluster_idx], paper_id, float(score))
                 )
                 association_count += 1
 
@@ -253,7 +258,7 @@ def store_clusters(
 
     print(f"✓ Created {association_count} cluster associations")
 
-    return n_clusters
+    return n_clusters, cluster_db_ids
 
 
 def cluster_papers(
@@ -326,10 +331,10 @@ def cluster_papers(
         labels, probabilities = cluster_with_gmm(embeddings, year_n_clusters, random_state)
 
         # Store results
-        n_created = store_clusters(db_path, paper_ids, probabilities, year_val, min_score)
+        n_created, cluster_db_ids = store_clusters(db_path, paper_ids, probabilities, year_val, min_score)
 
         # Compute and store cluster vectors
-        compute_cluster_vectors(db_path, embeddings, paper_ids, probabilities, top_n_for_vector)
+        compute_cluster_vectors(db_path, embeddings, paper_ids, probabilities, cluster_db_ids, top_n_for_vector)
 
         # Print cluster distribution
         print(f"\nCluster distribution for {year_val} (primary assignments):")
