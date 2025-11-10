@@ -228,6 +228,7 @@
                 searchQuery: '',
                 selectedYear: '',
                 availableYears: [],
+                previousYear: '',
                 currentPage: 1,
                 itemsPerPage: 50,
 
@@ -428,13 +429,14 @@
                 filterPapers() {
                     this.currentPage = 1; // Reset to first page when filtering
 
-                    // Reload clusters when year filter changes
-                    this.loadClusters();
-
-                    // Reset to "All Papers" when year changes
-                    if (this.selectedYear && this.selectedCluster !== null) {
+                    // Reset to "All Papers" only when year changes
+                    if (this.selectedYear !== this.previousYear && this.selectedCluster !== null) {
                         this.selectedCluster = null;
                     }
+                    this.previousYear = this.selectedYear;
+
+                    // Reload clusters when year filter changes
+                    this.loadClusters();
 
                     if (this.selectedCluster === null && !this.searchQuery && !this.selectedYear) {
                         this.filteredPapers = this.papers;
