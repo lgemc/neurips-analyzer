@@ -302,7 +302,14 @@
                     });
 
                     // Load the compressed database file from S3 with progress tracking
-                    const response = await fetch('https://lgemc-static.s3.amazonaws.com/neurips.db.gz');
+                    const response = await fetch('https://lgemc-static.s3.amazonaws.com/neurips.db.gz', {
+                        cache: 'default'
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch database: ${response.status}`);
+                    }
+
                     const contentLength = response.headers.get('content-length');
                     const total = parseInt(contentLength, 10);
 
@@ -310,16 +317,25 @@
                     const chunks = [];
                     let receivedLength = 0;
 
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
 
-                        chunks.push(value);
-                        receivedLength += value.length;
+                            chunks.push(value);
+                            receivedLength += value.length;
 
-                        // Update progress
-                        this.loadingProgress = Math.round((receivedLength / total) * 100);
+                            // Update progress - cap at 100%
+                            if (total > 0) {
+                                this.loadingProgress = Math.min(100, Math.round((receivedLength / total) * 100));
+                            }
+                        }
+                    } finally {
+                        reader.releaseLock();
                     }
+
+                    // Download complete - ensure progress shows 100%
+                    this.loadingProgress = 100;
 
                     // Combine chunks into single array
                     const compressedBuffer = new Uint8Array(receivedLength);

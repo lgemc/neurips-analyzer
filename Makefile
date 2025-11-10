@@ -18,7 +18,7 @@ create-web-db:
 
 upload-db:
 	@echo "Uploading compressed web-optimized database to S3..."
-	aws s3 cp neurips_web.db.gz s3://lgemc-static/neurips.db.gz --acl public-read --content-encoding gzip --content-type application/x-sqlite3
+	aws s3 cp neurips_web.db.gz s3://lgemc-static/neurips.db.gz --acl public-read --content-type application/gzip
 	@echo "✓ Database uploaded to: https://lgemc-static.s3.amazonaws.com/neurips.db.gz"
 
 all: create-web-db upload-db
