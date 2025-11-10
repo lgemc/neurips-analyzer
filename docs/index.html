@@ -222,6 +222,7 @@
                 db: null,
                 loading: true,
                 loadingProgress: 0,
+                isLoadingDatabase: false,
                 papers: [],
                 clusters: [],
                 filteredPapers: [],
@@ -296,15 +297,24 @@
                 },
 
                 async loadDatabase() {
-                    // Initialize sql.js
-                    const SQL = await initSqlJs({
-                        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
-                    });
+                    // Prevent multiple simultaneous loads
+                    if (this.isLoadingDatabase) {
+                        console.log('Database load already in progress, skipping...');
+                        return;
+                    }
 
-                    // Load the compressed database file from S3 with progress tracking
-                    const response = await fetch('https://lgemc-static.s3.amazonaws.com/neurips.db.gz', {
-                        cache: 'default'
-                    });
+                    this.isLoadingDatabase = true;
+
+                    try {
+                        // Initialize sql.js
+                        const SQL = await initSqlJs({
+                            locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                        });
+
+                        // Load the compressed database file from S3 with progress tracking
+                        const response = await fetch('https://lgemc-static.s3.amazonaws.com/neurips.db.gz', {
+                            cache: 'default'
+                        });
 
                     if (!response.ok) {
                         throw new Error(`Failed to fetch database: ${response.status}`);
@@ -345,13 +355,17 @@
                         position += chunk.length;
                     }
 
-                    // Decompress gzip data using browser's DecompressionStream
-                    const decompressedStream = new Response(
-                        new Blob([compressedBuffer]).stream().pipeThrough(new DecompressionStream('gzip'))
-                    );
-                    const decompressedBuffer = await decompressedStream.arrayBuffer();
+                        // Decompress gzip data using browser's DecompressionStream
+                        const decompressedStream = new Response(
+                            new Blob([compressedBuffer]).stream().pipeThrough(new DecompressionStream('gzip'))
+                        );
+                        const decompressedBuffer = await decompressedStream.arrayBuffer();
 
-                    this.db = new SQL.Database(new Uint8Array(decompressedBuffer));
+                        this.db = new SQL.Database(new Uint8Array(decompressedBuffer));
+                        console.log('Database loaded successfully');
+                    } finally {
+                        this.isLoadingDatabase = false;
+                    }
                 },
 
                 loadYears() {
