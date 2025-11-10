@@ -65,7 +65,7 @@
                         type="text"
                         x-model="searchQuery"
                         @input.debounce.300ms="search()"
-                        placeholder="Search papers by keyword..."
+                        placeholder="Search by title, author, or abstract..."
                         class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                     <!-- Year Filter -->
@@ -427,6 +427,11 @@
                     // Reload clusters when year filter changes
                     this.loadClusters();
 
+                    // Reset to "All Papers" when year changes
+                    if (this.selectedYear && this.selectedCluster !== null) {
+                        this.selectedCluster = null;
+                    }
+
                     if (this.selectedCluster === null && !this.searchQuery && !this.selectedYear) {
                         this.filteredPapers = this.papers;
                         this.renderUMAP();
@@ -436,7 +441,7 @@
                     if (this.selectedCluster !== null) {
                         // Get papers in selected cluster, sorted by score
                         const yearFilter = this.selectedYear ? `AND p.year = ${this.selectedYear}` : '';
-                        const searchFilter = this.searchQuery ? `AND (p.name LIKE '%${this.searchQuery}%' OR p.abstract LIKE '%${this.searchQuery}%')` : '';
+                        const searchFilter = this.searchQuery ? `AND (p.name LIKE '%${this.searchQuery}%' OR p.abstract LIKE '%${this.searchQuery}%' OR p.speakers_authors LIKE '%${this.searchQuery}%')` : '';
 
                         const result = this.db.exec(`
                             SELECT
@@ -493,7 +498,8 @@
                     this.filteredPapers = this.papers.filter(paper => {
                         const matchesSearch = !this.searchQuery ||
                             paper.name.toLowerCase().includes(query) ||
-                            (paper.abstract && paper.abstract.toLowerCase().includes(query));
+                            (paper.abstract && paper.abstract.toLowerCase().includes(query)) ||
+                            (paper.speakers_authors && paper.speakers_authors.toLowerCase().includes(query));
                         const matchesYear = !this.selectedYear || paper.year == this.selectedYear;
                         return matchesSearch && matchesYear;
                     });
