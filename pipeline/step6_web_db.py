@@ -5,7 +5,8 @@ Step 6: Create a web-optimized version of the NeurIPS database.
 This script creates a lightweight version of the database by:
 1. Removing embedding BLOBs from papers table (~43 MB saved)
 2. Removing embedding BLOBs from clusters table (minimal savings)
-3. Keeping all other data needed for the web viewer
+3. Truncating abstracts to half their word count for faster loading
+4. Keeping all other data needed for the web viewer
 
 Usage:
     python step6_web_db.py [--input INPUT_DB] [--output OUTPUT_DB]
@@ -55,17 +56,32 @@ def create_web_database(input_db: str, output_db: str) -> tuple[float, float, fl
         )
     """)
 
-    # Copy papers data without embedding
+    # Copy papers data without embedding and truncate abstracts to half
     source_cursor.execute("""
         SELECT id, type, name, virtualsite_url, speakers_authors, abstract, year, umap_x, umap_y
         FROM papers
     """)
 
     rows = source_cursor.fetchall()
+
+    # Truncate abstracts to half the word count
+    truncated_rows = []
+    for row in rows:
+        row_list = list(row)
+        abstract = row_list[5]  # abstract is at index 5
+
+        if abstract:
+            words = abstract.split()
+            half_length = len(words) // 2
+            truncated_abstract = ' '.join(words[:half_length])
+            row_list[5] = truncated_abstract
+
+        truncated_rows.append(tuple(row_list))
+
     dest_cursor.executemany("""
         INSERT INTO papers (id, type, name, virtualsite_url, speakers_authors, abstract, year, umap_x, umap_y)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, rows)
+    """, truncated_rows)
 
     # Create clusters table without embedding
     dest_cursor.execute("""
