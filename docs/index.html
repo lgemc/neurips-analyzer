@@ -591,6 +591,7 @@
                             type: 'scatter',
                             name: this.clusters.find(c => c.id === this.selectedCluster)?.name || 'Cluster',
                             text: displayPapers.map(p => p.name),
+                            customdata: displayPapers.map(p => p.id),
                             marker: {
                                 size: 5,
                                 color: this.selectedCluster,
@@ -621,6 +622,7 @@
                                 type: 'scatter',
                                 name: cluster?.name || 'Unknown',
                                 text: papers.map(p => p.name),
+                                customdata: papers.map(p => p.id),
                                 marker: {
                                     size: 5,
                                     opacity: 0.6
@@ -653,7 +655,7 @@
                     // Add click handler to select paper
                     document.getElementById('umap-plot').on('plotly_click', (data) => {
                         const point = data.points[0];
-                        const paperId = displayPapers[point.pointIndex]?.id;
+                        const paperId = point.customdata;
                         if (paperId) {
                             this.selectedPaper = this.papers.find(p => p.id === paperId);
                         }
