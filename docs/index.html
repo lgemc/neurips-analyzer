@@ -113,7 +113,7 @@
                                 >
                                     <div class="font-medium" x-html="processText(cluster.name)"></div>
                                     <div class="text-xs opacity-75">
-                                        <span x-text="`${cluster.count} papers`"></span>
+                                        <span x-text="`${getFilteredClusterCount(cluster.id)} papers`"></span>
                                         <span x-show="cluster.year && !selectedYear" x-text="` • ${cluster.year}`"></span>
                                     </div>
                                 </button>
@@ -412,6 +412,27 @@
                             count: row[4]
                         }));
                     }
+                },
+
+                getFilteredClusterCount(clusterId) {
+                    if (!this.searchQuery) {
+                        return this.clusters.find(c => c.id === clusterId)?.count || 0;
+                    }
+
+                    const yearFilter = this.selectedYear ? `AND p.year = ${this.selectedYear}` : '';
+                    const searchFilter = `AND (p.name LIKE '%${this.searchQuery}%' OR p.abstract LIKE '%${this.searchQuery}%' OR p.speakers_authors LIKE '%${this.searchQuery}%')`;
+
+                    const result = this.db.exec(`
+                        SELECT COUNT(DISTINCT p.id) as count
+                        FROM papers p
+                        JOIN cluster_associations ca ON p.id = ca.paper_id
+                        WHERE ca.cluster_id = ${clusterId}
+                        AND ca.score > 0.1
+                        ${yearFilter}
+                        ${searchFilter}
+                    `);
+
+                    return result[0]?.values[0]?.[0] || 0;
                 },
 
                 loadPapers() {
